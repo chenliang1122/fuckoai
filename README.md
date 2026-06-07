@@ -112,3 +112,7 @@ http://127.0.0.1:3030/api
 - `POST /api/uc-signup/start`
 - `POST /api/uc-signup/stop`
 - `GET /api/uc-signup/logs`
+
+## 致谢
+
+感谢 linux.do 社区提供的交流、经验和启发。
