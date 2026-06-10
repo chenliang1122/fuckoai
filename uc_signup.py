@@ -9,8 +9,10 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 import undetected_chromedriver as uc
+from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 
@@ -143,25 +145,7 @@ class SignupBot:
         for attempt in range(1, 4):
             self.close_browser()
             self.profile_dir = f"/tmp/fuckoai_uc_{os.getpid()}_{int(time.time() * 1000)}_{attempt}"
-            opts = uc.ChromeOptions()
-            opts.binary_location = CHROME_BINARY
-            args = [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-                "--disable-extensions",
-                "--disable-background-networking",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--lang=zh-CN",
-                "--window-size=1440,900",
-            ]
-            if PROXY:
-                args.append(f"--proxy-server={PROXY}")
-            for a in args:
-                opts.add_argument(a)
+            opts = self.build_chrome_options(uc.ChromeOptions())
             try:
                 self.d = uc.Chrome(options=opts, version_main=CHROME_VERSION, user_data_dir=self.profile_dir)
                 log(f"  webdriver={self.d.execute_script('return navigator.webdriver')}")
@@ -171,7 +155,49 @@ class SignupBot:
                 log(f"  Chrome 启动失败 {attempt}/3: {e}", "warn")
                 self.close_browser()
                 time.sleep(3)
-        raise FatalError(f"Chrome 启动失败，未购买手机号: {last_error}")
+        self.launch_with_system_driver(last_error)
+
+    def build_chrome_options(self, opts):
+        opts.binary_location = CHROME_BINARY
+        args = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-blink-features=AutomationControlled",
+            "--lang=zh-CN",
+            "--window-size=1440,900",
+        ]
+        if PROXY:
+            args.append(f"--proxy-server={PROXY}")
+        for arg in args:
+            opts.add_argument(arg)
+        return opts
+
+    def launch_with_system_driver(self, last_error):
+        chromedriver = shutil.which("chromedriver") or shutil.which("chromium-driver")
+        if not chromedriver:
+            raise FatalError(f"Chrome 启动失败，且未找到系统 chromedriver，未购买手机号: {last_error}")
+        self.close_browser()
+        self.profile_dir = f"/tmp/fuckoai_chromedriver_{os.getpid()}_{int(time.time() * 1000)}"
+        opts = self.build_chrome_options(webdriver.ChromeOptions())
+        opts.add_argument(f"--user-data-dir={self.profile_dir}")
+        try:
+            self.d = webdriver.Chrome(service=Service(chromedriver), options=opts)
+            self.d.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"},
+            )
+            log("  使用系统 ChromeDriver 后备启动")
+            log(f"  webdriver={self.d.execute_script('return navigator.webdriver')}")
+        except Exception as e:
+            self.close_browser()
+            raise FatalError(f"Chrome 启动失败，未购买手机号: {e}") from e
 
     # ── 页面等待 ────────────────────────────────────────
     def wait_ready(self, timeout=10):
