@@ -83,6 +83,10 @@ INTEGER_APP_SETTING_FIELDS = {
     "UC_SIGNUP_SMS_POLL_INTERVAL_SECONDS",
     "UC_SIGNUP_PHONE_PASSWORD_PAGE_TIMEOUT",
 }
+FILE_APP_SETTING_FIELDS = {
+    "STORE_FILE",
+    "PURCHASE_CONFIG_FILE",
+}
 
 DEFAULT_APP_SETTINGS: dict[str, Any] = {
     "HOST": "0.0.0.0",
@@ -158,6 +162,15 @@ def save_json_file(path: Path, payload: dict[str, Any]) -> None:
 
 def normalize_app_setting_value(key: str, value: Any) -> str:
     text = str(value if value is not None else DEFAULT_APP_SETTINGS.get(key, "")).strip()
+    default_value = str(DEFAULT_APP_SETTINGS.get(key, ""))
+    if key in FILE_APP_SETTING_FIELDS:
+        if not text:
+            return default_value
+        resolved_path = (ROOT / text).resolve()
+        if resolved_path == ROOT or text.endswith(("/", "\\")):
+            return default_value
+        return text
+
     if key not in INTEGER_APP_SETTING_FIELDS:
         return text
 
