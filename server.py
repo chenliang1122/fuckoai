@@ -87,6 +87,11 @@ FILE_APP_SETTING_FIELDS = {
     "STORE_FILE",
     "PURCHASE_CONFIG_FILE",
 }
+URL_APP_SETTING_FIELDS = {
+    "HERO_SMS_API_URL",
+    "TEMP_MAIL_API_URL",
+    "CPA_BASE_URL",
+}
 
 DEFAULT_APP_SETTINGS: dict[str, Any] = {
     "HOST": "0.0.0.0",
@@ -163,6 +168,11 @@ def save_json_file(path: Path, payload: dict[str, Any]) -> None:
 def normalize_app_setting_value(key: str, value: Any) -> str:
     text = str(value if value is not None else DEFAULT_APP_SETTINGS.get(key, "")).strip()
     default_value = str(DEFAULT_APP_SETTINGS.get(key, ""))
+    if key == "HERO_SMS_API_URL":
+        return normalize_hero_sms_api_url(text)
+    if key in URL_APP_SETTING_FIELDS:
+        return normalize_api_url(text)
+
     if key in FILE_APP_SETTING_FIELDS:
         if not text:
             return default_value
@@ -182,6 +192,37 @@ def normalize_app_setting_value(key: str, value: Any) -> str:
     if key == "PORT" and parsed in {5901, 6080}:
         return default_value
     return str(parsed)
+
+
+def normalize_api_url(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return text
+    if text.startswith("//"):
+        text = f"https:{text}"
+    if "://" not in text:
+        text = f"https://{text}"
+    parsed = urlparse(text)
+    if parsed.scheme == "http" and parsed.port == 443:
+        host = parsed.hostname or ""
+        path = parsed.path or ""
+        return f"https://{host}{path}".rstrip("/")
+    return text.rstrip("/")
+
+
+def normalize_hero_sms_api_url(value: str) -> str:
+    default_url = str(DEFAULT_APP_SETTINGS["HERO_SMS_API_URL"])
+    text = normalize_api_url(value)
+    if not text:
+        return default_url
+
+    parsed = urlparse(text)
+    host = (parsed.hostname or "").lower()
+    if host not in {"hero-sms.com", "www.hero-sms.com"}:
+        return text
+    if "handler_api.php" not in (parsed.path or ""):
+        return default_url
+    return f"https://hero-sms.com{parsed.path}"
 
 
 def load_config_values() -> dict[str, str]:
@@ -652,6 +693,16 @@ class HeroSmsError(Exception):
     pass
 
 
+def summarize_upstream_body(body: str) -> str:
+    text = str(body or "").strip()
+    lowered = text.lower()
+    if "plain http request was sent to https port" in lowered:
+        return "接口地址协议错误：请使用 https://hero-sms.com/stubs/handler_api.php"
+    if lowered.startswith("<!doctype") or lowered.startswith("<html"):
+        return "上游接口返回 HTML 错误页，请检查接口地址和网络代理配置"
+    return text[:500]
+
+
 class TempMailError(Exception):
     pass
 
@@ -706,12 +757,14 @@ class HeroSmsClient:
                 text = response.read().decode("utf-8", errors="replace").strip()
         except HTTPError as error:
             body = error.read().decode("utf-8", errors="replace").strip()
-            raise HeroSmsError(f"上游请求失败: HTTP {error.code} {body}".strip())
+            raise HeroSmsError(f"上游请求失败: HTTP {error.code} {summarize_upstream_body(body)}".strip())
         except URLError as error:
             raise HeroSmsError(f"上游连接失败: {error.reason}")
 
         if not text:
             return ""
+        if text.lstrip().lower().startswith(("<!doctype", "<html")):
+            raise HeroSmsError(summarize_upstream_body(text))
         if text.startswith("{") or text.startswith("["):
             payload = json.loads(text)
         else:
