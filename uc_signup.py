@@ -141,7 +141,18 @@ class SignupBot:
 
     def launch(self):
         os.environ["DISPLAY"] = DISPLAY
-        last_error = None
+        try:
+            self.launch_with_system_driver(None, headless=False)
+            return
+        except Exception as e:
+            last_error = e
+            log(f"  系统 ChromeDriver 启动失败，尝试 headless: {e}", "warn")
+        try:
+            self.launch_with_system_driver(last_error, headless=True)
+            return
+        except Exception as e:
+            last_error = e
+            log(f"  系统 ChromeDriver headless 启动失败，尝试 undetected: {e}", "warn")
         for attempt in range(1, 4):
             self.close_browser()
             self.profile_dir = f"/tmp/fuckoai_uc_{os.getpid()}_{int(time.time() * 1000)}_{attempt}"
@@ -155,9 +166,9 @@ class SignupBot:
                 log(f"  Chrome 启动失败 {attempt}/3: {e}", "warn")
                 self.close_browser()
                 time.sleep(3)
-        self.launch_with_system_driver(last_error)
+        raise FatalError(f"Chrome 启动失败，未购买手机号: {last_error}")
 
-    def build_chrome_options(self, opts):
+    def build_chrome_options(self, opts, *, headless=False):
         opts.binary_location = CHROME_BINARY
         args = [
             "--no-sandbox",
@@ -173,19 +184,21 @@ class SignupBot:
             "--lang=zh-CN",
             "--window-size=1440,900",
         ]
+        if headless:
+            args.append("--headless=new")
         if PROXY:
             args.append(f"--proxy-server={PROXY}")
         for arg in args:
             opts.add_argument(arg)
         return opts
 
-    def launch_with_system_driver(self, last_error):
+    def launch_with_system_driver(self, last_error, *, headless=False):
         chromedriver = shutil.which("chromedriver") or shutil.which("chromium-driver")
         if not chromedriver:
             raise FatalError(f"Chrome 启动失败，且未找到系统 chromedriver，未购买手机号: {last_error}")
         self.close_browser()
         self.profile_dir = f"/tmp/fuckoai_chromedriver_{os.getpid()}_{int(time.time() * 1000)}"
-        opts = self.build_chrome_options(webdriver.ChromeOptions())
+        opts = self.build_chrome_options(webdriver.ChromeOptions(), headless=headless)
         opts.add_argument(f"--user-data-dir={self.profile_dir}")
         try:
             self.d = webdriver.Chrome(service=Service(chromedriver), options=opts)
@@ -193,7 +206,8 @@ class SignupBot:
                 "Page.addScriptToEvaluateOnNewDocument",
                 {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"},
             )
-            log("  使用系统 ChromeDriver 后备启动")
+            mode = "headless" if headless else "visible"
+            log(f"  使用系统 ChromeDriver 启动: {mode}")
             log(f"  webdriver={self.d.execute_script('return navigator.webdriver')}")
         except Exception as e:
             self.close_browser()
