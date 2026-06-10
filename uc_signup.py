@@ -135,19 +135,43 @@ class SignupBot:
     def __init__(self, email=""):
         self.d = None
         self.requested_email = str(email or "").strip()
+        self.profile_dir = ""
 
     def launch(self):
         os.environ["DISPLAY"] = DISPLAY
-        opts = uc.ChromeOptions()
-        opts.binary_location = CHROME_BINARY
-        args = ["--no-sandbox","--disable-dev-shm-usage","--disable-gpu",
-                "--lang=zh-CN","--window-size=1440,900"]
-        if PROXY:
-            args.append(f"--proxy-server={PROXY}")
-        for a in args:
-            opts.add_argument(a)
-        self.d = uc.Chrome(options=opts, version_main=CHROME_VERSION)
-        log(f"  webdriver={self.d.execute_script('return navigator.webdriver')}")
+        last_error = None
+        for attempt in range(1, 4):
+            self.close_browser()
+            self.profile_dir = f"/tmp/fuckoai_uc_{os.getpid()}_{int(time.time() * 1000)}_{attempt}"
+            opts = uc.ChromeOptions()
+            opts.binary_location = CHROME_BINARY
+            args = [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--lang=zh-CN",
+                "--window-size=1440,900",
+            ]
+            if PROXY:
+                args.append(f"--proxy-server={PROXY}")
+            for a in args:
+                opts.add_argument(a)
+            try:
+                self.d = uc.Chrome(options=opts, version_main=CHROME_VERSION, user_data_dir=self.profile_dir)
+                log(f"  webdriver={self.d.execute_script('return navigator.webdriver')}")
+                return
+            except Exception as e:
+                last_error = e
+                log(f"  Chrome 启动失败 {attempt}/3: {e}", "warn")
+                self.close_browser()
+                time.sleep(3)
+        raise FatalError(f"Chrome 启动失败，未购买手机号: {last_error}")
 
     # ── 页面等待 ────────────────────────────────────────
     def wait_ready(self, timeout=10):
@@ -303,6 +327,10 @@ class SignupBot:
             try: self.d.quit()
             except: pass
             self.d = None
+        if self.profile_dir:
+            try: shutil.rmtree(self.profile_dir, ignore_errors=True)
+            except: pass
+            self.profile_dir = ""
 
     def cancel_phone(self, phone, reason=""):
         if not phone:
@@ -340,7 +368,8 @@ class SignupBot:
         full_phone = "+" + re.sub(r'\D', '', phone)
         log(f"📱 {phone}  📧 {email}")
 
-        self.launch()
+        if not self.d:
+            self.launch()
 
         self.d.get("https://chatgpt.com/auth/login?intent=signup")
         time.sleep(12)
@@ -433,6 +462,7 @@ class SignupBot:
                 if PHONE_RETRY_LIMIT > 0 and phone_attempt > PHONE_RETRY_LIMIT:
                     raise FatalError(f"同一邮箱换号重试已达上限: {last_phone_error}")
 
+                self.launch()
                 phone = api("POST", "/api/purchase", {})["item"]["phoneNumber"]
                 log(f"  手机号尝试 {attempt_label}")
                 try:
