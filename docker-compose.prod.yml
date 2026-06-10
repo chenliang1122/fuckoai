@@ -8,7 +8,7 @@ name: fuckoai
 
 services:
   fuckoai:
-    image: ${FUCKOAI_IMAGE:-ghcr.io/YOUR_GITHUB_USERNAME/fuckoai:latest}
+    image: ${FUCKOAI_IMAGE:-ghcr.io/chenliang1122/fuckoai:latest}
     container_name: fuckoai
     restart: unless-stopped
     network_mode: host
