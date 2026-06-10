@@ -15,6 +15,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from email import policy
 from email.parser import Parser
 from html import unescape as html_unescape
@@ -1276,6 +1277,16 @@ def parse_positive_int(value: Any, default: int = 1) -> int:
         return default
 
 
+def parse_price_decimal(value: Any) -> Decimal | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
+
+
 def generate_random_local_part(length: int = 10) -> str:
     alphabet = string.ascii_lowercase + string.digits
     return "".join(random.choices(alphabet, k=length))
@@ -2223,6 +2234,7 @@ def execute_purchase(filters: dict[str, str]) -> tuple[dict[str, Any], dict[str,
             exact_price=filters["exactPrice"],
         )
     else:
+        ensure_current_price_within_limit(filters, resolved)
         purchase = CLIENT.buy_activation(
             service_code=resolved["service"]["code"],
             country_code=resolved["country"]["code"],
@@ -2230,6 +2242,20 @@ def execute_purchase(filters: dict[str, str]) -> tuple[dict[str, Any], dict[str,
             max_price=filters["maxPrice"],
         )
     return purchase, resolved
+
+
+def ensure_current_price_within_limit(filters: dict[str, str], resolved: dict[str, Any]) -> None:
+    max_price = parse_price_decimal(filters.get("maxPrice"))
+    if max_price is None:
+        return
+
+    pricing = CLIENT.get_pricing(resolved["service"]["code"], resolved["country"]["code"])
+    current_price = parse_price_decimal(pricing.get("price"))
+    if current_price is None:
+        return
+    if current_price > max_price:
+        country_name = resolved["country"].get("localName") or resolved["country"].get("name")
+        raise HeroSmsError(f"当前接码价格 {current_price} 高于最高价 {max_price}，跳过 {country_name}")
 
 
 def build_purchase_item(

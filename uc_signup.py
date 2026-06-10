@@ -3,7 +3,7 @@
 ChatGPT 注册 + OAuth CPA 回调（最终版）
 用法: python3 uc_signup.py
 """
-import argparse, json, os, re, shutil, signal, subprocess, sys, time
+import argparse, json, os, random, re, shutil, signal, subprocess, sys, time
 from datetime import datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -30,6 +30,19 @@ PW   = os.getenv("SIGNUP_PASSWORD", "ChangeMe123456!")
 NAME = os.getenv("SIGNUP_NAME", "Test User")
 AGE  = os.getenv("SIGNUP_AGE", "18")
 DISPLAY = os.getenv("UC_SIGNUP_DISPLAY", os.getenv("BROWSER_DISPLAY", ":1"))
+RANDOMIZE_SIGNUP_PROFILE = os.getenv("RANDOMIZE_SIGNUP_PROFILE", "true").strip().lower() != "false"
+SIGNUP_MIN_AGE = max(21, int(os.getenv("SIGNUP_MIN_AGE", "21") or "21"))
+SIGNUP_MAX_AGE = max(SIGNUP_MIN_AGE, int(os.getenv("SIGNUP_MAX_AGE", "58") or "58"))
+FIRST_NAMES = (
+    "Alex", "Blake", "Casey", "Drew", "Evan", "Hayden", "Jamie", "Jordan",
+    "Kai", "Logan", "Morgan", "Noah", "Parker", "Quinn", "Riley", "Rowan",
+    "Sam", "Taylor",
+)
+LAST_NAMES = (
+    "Adams", "Baker", "Brooks", "Carter", "Clark", "Cooper", "Davis", "Evans",
+    "Foster", "Gray", "Green", "Hall", "Harris", "Hill", "King", "Lee",
+    "Miller", "Moore", "Perry", "Reed", "Scott", "Turner", "Walker", "Young",
+)
 def detect_chrome_binary():
     configured = os.getenv("UC_SIGNUP_CHROME_BINARY", os.getenv("CHROME_BINARY", "")).strip()
     if configured:
@@ -58,6 +71,13 @@ def detect_chrome_version(binary):
 
 CHROME_BINARY = detect_chrome_binary()
 CHROME_VERSION = detect_chrome_version(CHROME_BINARY)
+
+def build_signup_profile():
+    if not RANDOMIZE_SIGNUP_PROFILE:
+        return NAME, AGE
+    signup_name = f"{random.choice(FIRST_NAMES)} {random.choice(LAST_NAMES)}"
+    signup_age = str(random.randint(SIGNUP_MIN_AGE, SIGNUP_MAX_AGE))
+    return signup_name, signup_age
 
 # ── 工具函数 ────────────────────────────────────────────
 def log(msg, level="info"):
@@ -358,9 +378,11 @@ class SignupBot:
         time.sleep(3)
         log(f"→ {self.d.title}")
 
+        signup_name, signup_age = build_signup_profile()
+        log(f"  Signup profile: {signup_name}, age {signup_age}")
         self._step("姓名年龄", lambda: (
-            self.fill("input[name=name]", NAME),
-            self.fill("input[name=age]", AGE),
+            self.fill("input[name=name]", signup_name),
+            self.fill("input[name=age]", signup_age),
             self.click("Finish creating account")
         ))
         time.sleep(8)
