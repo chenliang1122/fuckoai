@@ -156,6 +156,18 @@ def save_json_file(path: Path, payload: dict[str, Any]) -> None:
         temp_path.unlink(missing_ok=True)
 
 
+def normalize_app_setting_value(key: str, value: Any) -> str:
+    text = str(value if value is not None else DEFAULT_APP_SETTINGS.get(key, "")).strip()
+    if key not in INTEGER_APP_SETTING_FIELDS:
+        return text
+
+    default_value = str(DEFAULT_APP_SETTINGS.get(key, "0"))
+    try:
+        return str(int(text))
+    except (TypeError, ValueError):
+        return default_value
+
+
 def load_config_values() -> dict[str, str]:
     file_config = load_json_file(CONFIG_PATH)
     values = {key: str(DEFAULT_APP_SETTINGS.get(key, "")) for key in APP_SETTING_FIELDS}
@@ -178,18 +190,6 @@ APP_CONFIG_VALUES = load_config_values()
 
 def app_config_value(key: str, default: Any = "") -> str:
     return str(APP_CONFIG_VALUES.get(key, DEFAULT_APP_SETTINGS.get(key, default)))
-
-
-def normalize_app_setting_value(key: str, value: Any) -> str:
-    text = str(value if value is not None else DEFAULT_APP_SETTINGS.get(key, "")).strip()
-    if key not in INTEGER_APP_SETTING_FIELDS:
-        return text
-
-    default_value = str(DEFAULT_APP_SETTINGS.get(key, "0"))
-    try:
-        return str(int(text))
-    except (TypeError, ValueError):
-        return default_value
 
 
 def app_config_int(key: str, default: int) -> int:
