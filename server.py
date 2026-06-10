@@ -163,9 +163,12 @@ def normalize_app_setting_value(key: str, value: Any) -> str:
 
     default_value = str(DEFAULT_APP_SETTINGS.get(key, "0"))
     try:
-        return str(int(text))
+        parsed = int(text)
     except (TypeError, ValueError):
         return default_value
+    if key == "PORT" and parsed in {5901, 6080}:
+        return default_value
+    return str(parsed)
 
 
 def load_config_values() -> dict[str, str]:
