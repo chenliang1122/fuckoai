@@ -1,0 +1,14 @@
+name: fuckoai
+
+services:
+  fuckoai:
+    build:
+      context: .
+    container_name: fuckoai
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      - ./config.json:/app/config.json
+      - ./data:/app/data

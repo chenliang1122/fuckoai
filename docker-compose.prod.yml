@@ -1,0 +1,22 @@
+# ============================================================
+# AI-GENERATED-FILE-START
+# 生成时间: 2026-06-10 17:45:05
+# 生成工具: Codex
+# 生成说明: 生产环境使用远程 Docker 镜像部署
+# ============================================================
+name: fuckoai
+
+services:
+  fuckoai:
+    image: ${FUCKOAI_IMAGE:-ghcr.io/YOUR_GITHUB_USERNAME/fuckoai:latest}
+    container_name: fuckoai
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      - ./config.json:/app/config.json
+      - ./data:/app/data
+# ============================================================
+# AI-GENERATED-FILE-END
+# ============================================================
