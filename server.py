@@ -74,6 +74,15 @@ APP_SETTING_FIELDS = (
     "PURCHASE_CONFIG_FILE",
 )
 
+INTEGER_APP_SETTING_FIELDS = {
+    "PORT",
+    "REQUEST_TIMEOUT_MS",
+    "UC_SIGNUP_PHONE_RETRIES",
+    "UC_SIGNUP_SMS_TIMEOUT_SECONDS",
+    "UC_SIGNUP_SMS_POLL_INTERVAL_SECONDS",
+    "UC_SIGNUP_PHONE_PASSWORD_PAGE_TIMEOUT",
+}
+
 DEFAULT_APP_SETTINGS: dict[str, Any] = {
     "HOST": "0.0.0.0",
     "PORT": "3030",
@@ -151,12 +160,15 @@ def load_config_values() -> dict[str, str]:
     values = {key: str(DEFAULT_APP_SETTINGS.get(key, "")) for key in APP_SETTING_FIELDS}
     for key in APP_SETTING_FIELDS:
         if key in file_config and file_config[key] is not None:
-            values[key] = str(file_config[key])
+            values[key] = normalize_app_setting_value(key, file_config[key])
     return values
 
 
 def write_config_values(values: dict[str, Any]) -> None:
-    serialized = {key: str(values.get(key, DEFAULT_APP_SETTINGS.get(key, ""))) for key in APP_SETTING_FIELDS}
+    serialized = {
+        key: normalize_app_setting_value(key, values.get(key, DEFAULT_APP_SETTINGS.get(key, "")))
+        for key in APP_SETTING_FIELDS
+    }
     save_json_file(CONFIG_PATH, serialized)
 
 
@@ -165,6 +177,25 @@ APP_CONFIG_VALUES = load_config_values()
 
 def app_config_value(key: str, default: Any = "") -> str:
     return str(APP_CONFIG_VALUES.get(key, DEFAULT_APP_SETTINGS.get(key, default)))
+
+
+def normalize_app_setting_value(key: str, value: Any) -> str:
+    text = str(value if value is not None else DEFAULT_APP_SETTINGS.get(key, "")).strip()
+    if key not in INTEGER_APP_SETTING_FIELDS:
+        return text
+
+    default_value = str(DEFAULT_APP_SETTINGS.get(key, "0"))
+    try:
+        return str(int(text))
+    except (TypeError, ValueError):
+        return default_value
+
+
+def app_config_int(key: str, default: int) -> int:
+    try:
+        return int(app_config_value(key, str(default)).strip())
+    except (TypeError, ValueError):
+        return default
 
 
 def parse_bool_flag(value: Any, default: bool = False) -> bool:
@@ -238,7 +269,7 @@ class UcSignupState:
 @dataclass
 class Config:
     host: str = app_config_value("HOST", "0.0.0.0")
-    port: int = int(app_config_value("PORT", "3030"))
+    port: int = app_config_int("PORT", 3030)
     api_key: str = app_config_value("HERO_SMS_API_KEY", "")
     api_url: str = app_config_value("HERO_SMS_API_URL", "https://hero-sms.com/stubs/handler_api.php")
     default_service_name: str = DEFAULT_SERVICE_NAME
@@ -251,7 +282,7 @@ class Config:
     default_max_price: str = ""
     default_exact_price: str = ""
     default_fixed_price: str = ""
-    timeout_ms: int = int(app_config_value("REQUEST_TIMEOUT_MS", "15000"))
+    timeout_ms: int = app_config_int("REQUEST_TIMEOUT_MS", 15000)
     enable_cors: bool = app_config_value("ENABLE_CORS", "true").lower() == "true"
     store_file: Path = ROOT / app_config_value("STORE_FILE", "./data/activations.json")
     purchase_config_file: Path = PURCHASE_CONFIG_PATH
@@ -1162,7 +1193,7 @@ def reload_runtime_config() -> None:
 
     APP_CONFIG_VALUES = load_config_values()
     CONFIG.host = app_config_value("HOST", "0.0.0.0")
-    CONFIG.port = int(app_config_value("PORT", str(CONFIG.port)))
+    CONFIG.port = app_config_int("PORT", CONFIG.port)
     CONFIG.api_key = app_config_value("HERO_SMS_API_KEY", "")
     CONFIG.api_url = app_config_value("HERO_SMS_API_URL", "https://hero-sms.com/stubs/handler_api.php")
     CONFIG.default_service_name = DEFAULT_SERVICE_NAME
@@ -1173,7 +1204,7 @@ def reload_runtime_config() -> None:
     CONFIG.default_max_price = ""
     CONFIG.default_exact_price = ""
     CONFIG.default_fixed_price = ""
-    CONFIG.timeout_ms = int(app_config_value("REQUEST_TIMEOUT_MS", str(CONFIG.timeout_ms)))
+    CONFIG.timeout_ms = app_config_int("REQUEST_TIMEOUT_MS", CONFIG.timeout_ms)
     CONFIG.enable_cors = app_config_value("ENABLE_CORS", "true").lower() == "true"
     CONFIG.store_file = (ROOT / app_config_value("STORE_FILE", "./data/activations.json")).resolve()
     CONFIG.purchase_config_file = (ROOT / app_config_value("PURCHASE_CONFIG_FILE", "./data/purchase_config.json")).resolve()
